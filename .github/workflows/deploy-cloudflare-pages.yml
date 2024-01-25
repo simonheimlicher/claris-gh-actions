@@ -8,8 +8,6 @@ on:
         required: true
       CLOUDFLARE_PROJECT_NAME:
         required: true
-      GITHUB_TOKEN:
-        required: true
 
 jobs:
   deploy:
@@ -20,6 +18,7 @@ jobs:
     env:
       # Define the branch name variable
       BRANCH_NAME: ${{ github.ref_name }}
+      ARTIFACT_PATH: path
   
     steps:
       - name: Download build artifact
@@ -28,10 +27,9 @@ jobs:
           # Name of the artifact to download.
           # If unspecified, all artifacts for the run are downloaded.
           # Optional.
-          name: public-${{ env.BRANCH_NAME }}
+          name: ${{ env.ARTIFACT_PATH }}-${{ env.BRANCH_NAME }}
           # Destination path. Supports basic tilde expansion.
-          # Optional. Default is $GITHUB_WORKSPACE
-          path: public
+          path: ${{ env.ARTIFACT_PATH }}
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/pages-action@v1
@@ -46,9 +44,6 @@ jobs:
           # left-hand navigation. The slug being shown for every project is also the project name.
           # You can change it by going to the "Settings" tab of the Pages project
           projectName: ${{ secrets.CLOUDFLARE_PROJECT_NAME }}
-          directory: public
-          # Optional: Enable this if you want to have GitHub Deployments triggered
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-          # Optional: Change the Wrangler version, allows you to point to a specific version or a tag such as `beta`
+          directory: ${{ env.ARTIFACT_PATH }}
           # Use the newly released Wrangler v3 with the wranglerVersion property
           wranglerVersion: '3'

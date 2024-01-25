@@ -20,8 +20,6 @@ on:
         required: true
       CLOUDFLARE_ACCOUNT_ID:
         required: true
-      GITHUB_TOKEN:
-        required: true
 
 jobs:
   build:
@@ -39,4 +37,3 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ github.ref == 'refs/heads/main' && secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_STAGE_ACCOUNT_ID }}
       cloudflare_project_name: ${{ github.ref == 'refs/heads/main' && inputs.cloudflare_project_name || inputs.cloudflare_stage_project_name }}
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
