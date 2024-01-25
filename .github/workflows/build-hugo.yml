@@ -18,6 +18,7 @@ jobs:
       HUGO_VERSION: ${{ inputs.hugo_version }}
       # Define the branch name variable
       BRANCH_NAME: ${{ github.ref_name }}
+      ARTIFACT_PATH: public
 
     steps:
 
@@ -101,19 +102,15 @@ jobs:
           HUGO_ENVIRONMENT: production
           HUGO_ENV: production
           HUGO_CLARIS_AUTHOR_EMAIL: ${{ secrets.HUGO_CLARIS_AUTHOR_EMAIL }}
-          ARTIFACT_PATH: path
-
         run: hugo --gc --minify
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          # Name of the artifact to upload.
-          # Optional. Default is 'artifact'
+          # Name of the artifact to upload: include branch name
           name: ${{ env.ARTIFACT_PATH }}-${{ env.BRANCH_NAME }}
 
-          # A file, directory or wildcard pattern that describes what to upload
-          # Required.
+          # The file, directory or wildcard pattern that describes what to upload
           path: ${{ env.ARTIFACT_PATH }}
 
           # The desired behavior if no files are found using the provided path.

@@ -18,7 +18,7 @@ jobs:
     env:
       # Define the branch name variable
       BRANCH_NAME: ${{ github.ref_name }}
-      ARTIFACT_PATH: path
+      ARTIFACT_PATH: public
   
     steps:
       - name: Download build artifact
