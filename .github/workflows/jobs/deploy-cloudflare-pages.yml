@@ -1,0 +1,54 @@
+name: Deploy to Cloudflare Pages
+on:
+  workflow_call:
+    secrets:
+      CLOUDFLARE_API_TOKEN:
+        required: true
+      CLOUDFLARE_ACCOUNT_ID:
+        required: true
+      CLOUDFLARE_PROJECT_NAME:
+        required: true
+      GITHUB_TOKEN:
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    env:
+      # Define the branch name variable
+      BRANCH_NAME: ${{ github.ref_name }}
+  
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          # Name of the artifact to download.
+          # If unspecified, all artifacts for the run are downloaded.
+          # Optional.
+          name: public-${{ env.BRANCH_NAME }}
+          # Destination path. Supports basic tilde expansion.
+          # Optional. Default is $GITHUB_WORKSPACE
+          path: public
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # Get account ID: Log in to the Cloudflare dashboard, select your zone in Account Home
+          # and find your account ID in Overview under API on the right-side menu.
+          # If you do not have a zone registered to your account, you can also get your account
+          # ID from the pages.dev URL. E.g: https://dash.cloudflare.com/<ACCOUNT_ID>/pages
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Get project ID: Log in to the Cloudflare dashboard and select "Workers & Pages" in the
+          # left-hand navigation. The slug being shown for every project is also the project name.
+          # You can change it by going to the "Settings" tab of the Pages project
+          projectName: ${{ secrets.CLOUDFLARE_PROJECT_NAME }}
+          directory: public
+          # Optional: Enable this if you want to have GitHub Deployments triggered
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          # Optional: Change the Wrangler version, allows you to point to a specific version or a tag such as `beta`
+          # Use the newly released Wrangler v3 with the wranglerVersion property
+          wranglerVersion: '3'
