@@ -39,20 +39,35 @@ jobs:
         id: check-node
         run: |
           if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ] || [ -f yarn.lock ]; then
-            echo "NODE_DEPENDENCIES=true" >> $GITHUB_ENV
+            echo "NODE_CACHED=true" >> $GITHUB_ENV
           else
-            echo "NODE_DEPENDENCIES=false" >> $GITHUB_ENV
+            echo "NODE_CACHED=false" >> $GITHUB_ENV
           fi
 
+      - name: Set up node
+        if: env.NODE_CACHED == 'false'
+        uses: actions/setup-node@v4
+        with:
+          # Don't use cache, otherwise the build fails
+          node-version: 20
+  
+      - name: Install required node modules
+        if: env.NODE_CACHED == 'false'
+        run: |
+          npm install --save-dev postcss postcss-cli \
+            autoprefixer \
+            @fullhuman/postcss-purgecss \
+            postcss-var-optimize
+
       - name: Install or fetch node modules from cache
-        if: env.NODE_DEPENDENCIES == 'true'
+        if: env.NODE_CACHED == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
 
       - name: Install Node.js dependencies
-        if: env.NODE_DEPENDENCIES == 'true'
+        if: env.NODE_CACHED == 'true'
         run: npm ci
 
 

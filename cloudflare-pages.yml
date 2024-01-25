@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  cloudflare-pages:
     uses: simonheimlicher/claris-gh-actions/.github/workflows/cloudflare-pages.yml@main
     with:
       hugo_version: '0.121.2'
