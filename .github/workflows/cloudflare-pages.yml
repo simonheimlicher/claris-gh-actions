@@ -20,6 +20,8 @@ on:
         required: true
       CLOUDFLARE_ACCOUNT_ID:
         required: true
+      CLOUDFLARE_STAGE_ACCOUNT_ID:
+        required: true
 
 jobs:
   build:
