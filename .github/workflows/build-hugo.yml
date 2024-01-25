@@ -35,12 +35,26 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
+      - name: Check for Node.js dependency files
+        id: check-node
+        run: |
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ] || [ -f yarn.lock ]; then
+            echo "NODE_DEPENDENCIES=true" >> $GITHUB_ENV
+          else
+            echo "NODE_DEPENDENCIES=false" >> $GITHUB_ENV
+          fi
+
       - name: Install or fetch node modules from cache
+        if: env.NODE_DEPENDENCIES == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
-      - run: npm ci
+
+      - name: Install Node.js dependencies
+        if: env.NODE_DEPENDENCIES == 'true'
+        run: npm ci
+
 
       - name: Fetch resources from cache
         uses: actions/cache@v3
