@@ -27,7 +27,7 @@ jobs:
   build:
     uses: simonheimlicher/claris-gh-actions/.github/workflows/build-hugo.yml@main
     with:
-      hugo_version: '0.121.2'
+      hugo_version: ${{ inputs.hugo_version || '0.121.2' }}
     secrets:
       HUGO_CLARIS_AUTHOR_EMAIL: ${{ secrets.HUGO_CLARIS_AUTHOR_EMAIL }}
 
