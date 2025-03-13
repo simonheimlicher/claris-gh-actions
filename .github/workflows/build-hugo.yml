@@ -2,7 +2,7 @@ name: Build Hugo Site
 on:
   workflow_call:
     inputs:
-      hugo_version:
+      HUGO_VERSION:
         required: true
         type: string
     secrets:
@@ -15,7 +15,7 @@ jobs:
     permissions:
       contents: read
     env:
-      HUGO_VERSION: ${{ inputs.hugo_version }}
+      HUGO_VERSION: ${{ inputs.HUGO_VERSION }}
       # Define the branch name variable
       BRANCH_NAME: ${{ github.ref_name }}
       ARTIFACT_PATH: public
