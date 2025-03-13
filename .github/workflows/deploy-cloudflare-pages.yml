@@ -6,9 +6,11 @@ on:
         required: true
       CLOUDFLARE_ACCOUNT_ID:
         required: true
+    inputs:
       CLOUDFLARE_PROJECT_NAME:
         required: true
-
+        type: string
+    
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -43,7 +45,7 @@ jobs:
           # Get project ID: Log in to the Cloudflare dashboard and select "Workers & Pages" in the
           # left-hand navigation. The slug being shown for every project is also the project name.
           # You can change it by going to the "Settings" tab of the Pages project
-          projectName: ${{ secrets.CLOUDFLARE_PROJECT_NAME }}
+          projectName: ${{ inputs.CLOUDFLARE_PROJECT_NAME }}
           directory: ${{ env.ARTIFACT_PATH }}
           # Use the newly released Wrangler v3 with the wranglerVersion property
           wranglerVersion: '3'
