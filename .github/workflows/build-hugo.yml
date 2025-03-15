@@ -20,6 +20,9 @@ jobs:
     env:
       HUGO_VERSION: ${{ inputs.HUGO_VERSION }}
       HUGO_ENVIRONMENT: ${{ inputs.HUGO_ENVIRONMENT }}
+      # For maximum backward compatibility with Hugo modules, 
+      # we also set the HUGO_ENV variable
+      HUGO_ENV: ${{ inputs.HUGO_ENVIRONMENT }}
       # Define the branch name variable
       BRANCH_NAME: ${{ github.ref_name }}
       ARTIFACT_PATH: public
@@ -86,9 +89,6 @@ jobs:
 
       - name: Check for hugo_stats.json
         env:
-          # For maximum backward compatibility with Hugo modules
-          HUGO_ENVIRONMENT: production
-          HUGO_ENV: production
           HUGO_CLARIS_AUTHOR_EMAIL: ${{ secrets.HUGO_CLARIS_AUTHOR_EMAIL }}
         run: |
           if ! [ -f hugo_stats.json ]; then
@@ -102,9 +102,6 @@ jobs:
 
       - name: Build with Hugo
         env:
-          # For maximum backward compatibility with Hugo modules
-          HUGO_ENVIRONMENT: production
-          HUGO_ENV: production
           HUGO_CLARIS_AUTHOR_EMAIL: ${{ secrets.HUGO_CLARIS_AUTHOR_EMAIL }}
         run: hugo --gc --minify
 
