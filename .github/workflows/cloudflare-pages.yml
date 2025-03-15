@@ -7,6 +7,9 @@ on:
       HUGO_VERSION:
         required: true
         type: string
+      HUGO_ENVIRONMENT:
+        required: true
+        type: string
       CLOUDFLARE_PROJECT_NAME:
         type: string
         required: true
@@ -27,7 +30,8 @@ jobs:
   build:
     uses: simonheimlicher/claris-gh-actions/.github/workflows/build-hugo.yml@main
     with:
-      HUGO_VERSION: ${{ inputs.HUGO_VERSION || '0.143.1' }}
+      HUGO_VERSION: ${{ inputs.HUGO_VERSION }}
+      HUGO_ENVIRONMENT: ${{ inputs.HUGO_ENVIRONMENT }}
     secrets:
       HUGO_CLARIS_AUTHOR_EMAIL: ${{ secrets.HUGO_CLARIS_AUTHOR_EMAIL }}
 

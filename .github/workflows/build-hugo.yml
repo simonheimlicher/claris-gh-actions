@@ -5,6 +5,9 @@ on:
       HUGO_VERSION:
         required: true
         type: string
+      HUGO_ENVIRONMENT:
+        required: true
+        type: string
     secrets:
       HUGO_CLARIS_AUTHOR_EMAIL:
         required: true
@@ -16,6 +19,7 @@ jobs:
       contents: read
     env:
       HUGO_VERSION: ${{ inputs.HUGO_VERSION }}
+      HUGO_ENVIRONMENT: ${{ inputs.HUGO_ENVIRONMENT }}
       # Define the branch name variable
       BRANCH_NAME: ${{ github.ref_name }}
       ARTIFACT_PATH: public
