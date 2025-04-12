@@ -2,6 +2,14 @@ name: Build Hugo Site
 on:
   workflow_call:
     inputs:
+      # The base URL on the custom domain of your Cloudflare Pages project
+      BASE_URL:
+        required: true
+        type: string
+      # The canonical base URL (only has an effect if it differs from the base URL)
+      CANONICAL_BASE_URL:
+        required: false
+        type: string
       HUGO_VERSION:
         required: true
         type: string
@@ -20,91 +28,72 @@ jobs:
     env:
       HUGO_VERSION: ${{ inputs.HUGO_VERSION }}
       HUGO_ENVIRONMENT: ${{ inputs.HUGO_ENVIRONMENT }}
-      # For maximum backward compatibility with Hugo modules, 
-      # we also set the HUGO_ENV variable
+      # For maximum backward compatibility with Hugo modules
       HUGO_ENV: ${{ inputs.HUGO_ENVIRONMENT }}
-      # Define the branch name variable
+      # Custom environment variables to support theme logic and deployment
+      HUGO_BASE_URL: ${{ inputs.BASE_URL }}
+      HUGO_CANONICAL_BASE_URL: ${{ inputs.CANONICAL_BASE_URL }}
       BRANCH_NAME: ${{ github.ref_name }}
       ARTIFACT_PATH: public
 
     steps:
-
+      # Install Hugo extended version
       - name: Install Hugo CLI
         run: |
           wget -O ${{ runner.temp }}/hugo.deb https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_extended_${HUGO_VERSION}_linux-amd64.deb \
           && sudo dpkg -i ${{ runner.temp }}/hugo.deb
 
+      # Install Dart Sass for SCSS processing
       - name: Install Dart Sass
         run: sudo snap install dart-sass
 
+      # Checkout project with all submodules for themes or dependencies
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Check for Node.js dependency files
-        id: check-node
+      # Install Node.js dependencies if package-lock.json or similar exists
+      - name: Install Node.js dependencies
         run: |
           if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ] || [ -f yarn.lock ]; then
-            echo "NODE_CACHED=true" >> $GITHUB_ENV
-          else
-            echo "NODE_CACHED=false" >> $GITHUB_ENV
+            npm ci
           fi
 
-      - name: Set up node
-        if: env.NODE_CACHED == 'false'
-        uses: actions/setup-node@v4
+      # Restore Hugo's internal cache for faster builds (e.g. image processing)
+      - name: Restore Hugo cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
         with:
-          # Don't use cache, otherwise the build fails
-          node-version: 20
-  
-      - name: Install required node modules
-        if: env.NODE_CACHED == 'false'
-        run: |
-          npm install --save-dev postcss postcss-cli \
-            autoprefixer \
-            @fullhuman/postcss-purgecss \
-            postcss-var-optimize
+          path: ${{ runner.temp }}/hugo_cache
+          key: hugo-${{ github.run_id }}
+          restore-keys: hugo-
 
-      - name: Install or fetch node modules from cache
-        if: env.NODE_CACHED == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
-
-      - name: Install Node.js dependencies
-        if: env.NODE_CACHED == 'true'
-        run: npm ci
-
-
-      - name: Fetch resources from cache
-        uses: actions/cache@v3
-        with:
-          path: resources
-          key: ${{ runner.os }}-hugo-resources-${{ env.BRANCH_NAME }}-${{ github.run_id }}
-          restore-keys: |
-            ${{ runner.os }}-hugo-resources-${{ env.BRANCH_NAME }}-
-
+      # Check if hugo_stats.json exists (required for Hugo Claris theme)
       - name: Check for hugo_stats.json
         env:
           HUGO_CLARIS_AUTHOR_EMAIL: ${{ secrets.HUGO_CLARIS_AUTHOR_EMAIL }}
         run: |
           if ! [ -f hugo_stats.json ]; then
             echo "Running hugo to create 'hugo_stats.json' as this required file is missing."
-            hugo --gc --minify
+            hugo --gc --minify --cacheDir "${{ runner.temp }}/hugo_cache"
           fi
           if ! [ -f hugo_stats.json ]; then
             echo "Fatal error: Hugo failed to create hugo_stats.json"
             exit 1
           fi
 
+      # Perform the final build using Hugo
       - name: Build with Hugo
         env:
           HUGO_CLARIS_AUTHOR_EMAIL: ${{ secrets.HUGO_CLARIS_AUTHOR_EMAIL }}
-        run: hugo --gc --minify
+        run: |
+          hugo --gc --minify \
+            --cacheDir "${{ runner.temp }}/hugo_cache" \
+            --baseURL="${{ env.HUGO_BASE_URL }}"
 
+      # Upload the built site as an artifact for later deployment
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
@@ -133,3 +122,23 @@ jobs:
           # For large files that are not easily compressed, a value of 0 is recommended for significantly faster uploads.
           # Optional. Default is '6'
           compression-level: 0
+      # Create a list of public URLs for use in diff-based cache invalidation
+      - name: Create public URL manifest
+        run: |
+          find public -type f | sort > public-manifest.txt
+          awk -v base="${{ env.HUGO_CANONICAL_BASE_URL || env.HUGO_BASE_URL }}" \
+              '{ print base "/" $0 }' public-manifest.txt > public-urls.txt
+
+      # Cache the public URL manifest for later use during deploy (diff & purge)
+      - name: Cache public URL manifest
+        uses: actions/cache/save@v3
+        with:
+          path: public-urls.txt
+          key: manifest-${{ env.BRANCH_NAME }}
+
+      # Save Hugo cache after build
+      - name: Save Hugo cache
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/hugo_cache
+          key: ${{ steps.cache-restore.outputs.cache-primary-key }}

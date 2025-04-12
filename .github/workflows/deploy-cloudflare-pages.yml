@@ -1,16 +1,28 @@
 name: Deploy to Cloudflare Pages
+
 on:
   workflow_call:
+    inputs:
+      # The base URL on the custom domain of your Cloudflare Pages project
+      BASE_URL:
+        required: true
+        type: string
+      # The canonical base URL (only has an effect if it differs from the base URL)
+      CANONICAL_BASE_URL:
+        required: false
+        type: string
+      CLOUDFLARE_PROJECT_NAME:
+        required: true
+        type: string
     secrets:
+      # Cloudflare Zone ID is required for manual cache purging
+      CLOUDFLARE_ZONE_ID:
+        required: true
       CLOUDFLARE_API_TOKEN:
         required: true
       CLOUDFLARE_ACCOUNT_ID:
         required: true
-    inputs:
-      CLOUDFLARE_PROJECT_NAME:
-        required: true
-        type: string
-    
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -21,7 +33,9 @@ jobs:
       # Define the branch name variable
       BRANCH_NAME: ${{ github.ref_name }}
       ARTIFACT_PATH: public
-  
+      HUGO_BASE_URL: ${{ inputs.BASE_URL }}
+      HUGO_CANONICAL_BASE_URL: ${{ inputs.CANONICAL_BASE_URL }}
+
     steps:
       - name: Download build artifact
         uses: actions/download-artifact@v4
@@ -49,3 +63,81 @@ jobs:
           directory: ${{ env.ARTIFACT_PATH }}
           # Use the newly released Wrangler v3 with the wranglerVersion property
           wranglerVersion: '3'
+
+      # Restore previously cached URL hash manifest to detect changes
+      - name: Restore previous manifest
+        id: restore-manifest
+        uses: actions/cache/restore@v3
+        with:
+          path: previous-hash-manifest.txt
+          key: manifest-${{ env.BRANCH_NAME }}
+
+      # Recreate hash-based manifest from downloaded build artifact
+      - name: Generate current hash manifest
+        run: |
+          # Compute SHA256 hashes of all published files and sort them
+          find ${{ env.ARTIFACT_PATH }} -type f -exec sha256sum {} \; | sed "s|  ${{ env.ARTIFACT_PATH }}/|  |" | sort > public-hash-manifest.txt
+
+      # Compare current and previous hash manifest to get changed files
+      - name: Compare manifests
+        id: compare
+        run: |
+          # Default to full purge
+          cp public-hash-manifest.txt changed-hash-manifest.txt
+          echo "FULL_PURGE=true" >> $GITHUB_ENV
+
+          # Validate previous manifest before trying diff
+          if [ -f previous-hash-manifest.txt ] && file previous-hash-manifest.txt | grep -q 'ASCII text'; then
+            echo "Previous hash manifest is valid. Attempting diff."
+            comm -13 previous-hash-manifest.txt public-hash-manifest.txt > changed-hash-manifest.txt
+
+            # Extract filenames from changed lines
+            awk '{ print $2 }' changed-hash-manifest.txt > changed-files.txt
+
+            # If any files changed, switch to selective purge
+            if [ -s changed-files.txt ]; then
+              echo "Detected content changes. Doing selective purge."
+              sed -n '1,3p' changed-files.txt  # log a few
+              echo "FULL_PURGE=false" >> $GITHUB_ENV
+            else
+              echo "No content changes detected. Skipping purge."
+              echo "FULL_PURGE=false" >> $GITHUB_ENV
+              : > changed-files.txt
+            fi
+          else
+            echo "Invalid or missing previous hash manifest. Forcing full purge."
+            rm -f previous-hash-manifest.txt
+            cp public-hash-manifest.txt changed-hash-manifest.txt
+            awk '{ print $2 }' changed-hash-manifest.txt > changed-files.txt
+          fi
+
+          echo "--- Changed files ---"
+          cat changed-files.txt || echo "(none)"
+
+      # Build current-urls.txt from changed file paths and prepend base URL
+      - name: Build changed URL list
+        run: |
+          BASE_URL="${{ env.HUGO_CANONICAL_BASE_URL || env.HUGO_BASE_URL }}"
+          BASE_URL="${BASE_URL%/}"  # normalize trailing slash
+          awk -v base="$BASE_URL" '{ print base "/" $0 }' changed-files.txt > current-urls.txt
+
+      # Build JSON payload for Cloudflare purge API
+      - name: Build purge payload
+        id: purge
+        run: |
+          if [ -s current-urls.txt ]; then
+            FILES=$(jq -Rs 'split("\n") | map(select(. != ""))' < current-urls.txt | jq -c .)
+            echo "files=$FILES" >> "$GITHUB_OUTPUT"
+            echo "Files to purge:"
+            echo "$FILES" | jq -r '.[]'
+          else
+            echo "files=[]" >> "$GITHUB_OUTPUT"
+            echo "No files to purge as `current-urls.txt` is empty"
+          fi
+
+      # Save current hash manifest to cache for the next deploy
+      - name: Cache current manifest for future deploy
+        uses: actions/cache/save@v3
+        with:
+          path: public-hash-manifest.txt
+          key: manifest-${{ env.BRANCH_NAME }}
