@@ -75,9 +75,13 @@ jobs:
         env:
           HUGO_CLARIS_AUTHOR_EMAIL: ${{ secrets.HUGO_CLARIS_AUTHOR_EMAIL }}
         run: |
+          echo 'hugo config --format yaml --cacheDir "${{ runner.temp }}/hugo_cache" | grep -B3 cache'
+          hugo config --format yaml --cacheDir "${{ runner.temp }}/hugo_cache" | grep -B3 cache
           if ! [ -f hugo_stats.json ]; then
             echo "Running hugo to create 'hugo_stats.json' as this required file is missing."
-            hugo --gc --minify --cacheDir "${{ runner.temp }}/hugo_cache"
+            hugo --gc --minify \
+              --cacheDir "${{ runner.temp }}/hugo_cache" \
+              --baseURL "${{ env.HUGO_BASE_URL }}"
           fi
           if ! [ -f hugo_stats.json ]; then
             echo "Fatal error: Hugo failed to create hugo_stats.json"
@@ -91,7 +95,7 @@ jobs:
         run: |
           hugo --gc --minify \
             --cacheDir "${{ runner.temp }}/hugo_cache" \
-            --baseURL="${{ env.HUGO_BASE_URL }}"
+            --baseURL "${{ env.HUGO_BASE_URL }}"
 
       # Upload the built site as an artifact for later deployment
       - name: Upload build artifact
@@ -122,19 +126,6 @@ jobs:
           # For large files that are not easily compressed, a value of 0 is recommended for significantly faster uploads.
           # Optional. Default is '6'
           compression-level: 0
-      # Create a list of public URLs for use in diff-based cache invalidation
-      - name: Create public URL manifest
-        run: |
-          find public -type f | sort > public-manifest.txt
-          awk -v base="${{ env.HUGO_CANONICAL_BASE_URL || env.HUGO_BASE_URL }}" \
-              '{ print base "/" $0 }' public-manifest.txt > public-urls.txt
-
-      # Cache the public URL manifest for later use during deploy (diff & purge)
-      - name: Cache public URL manifest
-        uses: actions/cache/save@v3
-        with:
-          path: public-urls.txt
-          key: manifest-${{ env.BRANCH_NAME }}
 
       # Save Hugo cache after build
       - name: Save Hugo cache
@@ -142,3 +133,8 @@ jobs:
         with:
           path: ${{ runner.temp }}/hugo_cache
           key: ${{ steps.cache-restore.outputs.cache-primary-key }}
+      # Save Hugo cache after build
+      - name: Check size of Hugo cache
+        run: |
+          du -sch ${{ runner.temp }}/*/*
+          du -sch ${{ runner.temp }}/hugo_cache/*/*

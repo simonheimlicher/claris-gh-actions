@@ -33,8 +33,8 @@ jobs:
       # Define the branch name variable
       BRANCH_NAME: ${{ github.ref_name }}
       ARTIFACT_PATH: public
-      HUGO_BASE_URL: ${{ inputs.BASE_URL }}
-      HUGO_CANONICAL_BASE_URL: ${{ inputs.CANONICAL_BASE_URL }}
+      BASE_URL: ${{ inputs.BASE_URL }}
+      CANONICAL_BASE_URL: ${{ inputs.CANONICAL_BASE_URL }}
 
     steps:
       - name: Download build artifact
@@ -72,68 +72,31 @@ jobs:
           path: previous-hash-manifest.txt
           key: manifest-${{ env.BRANCH_NAME }}
 
-      # Recreate hash-based manifest from downloaded build artifact
-      - name: Generate current hash manifest
+      # Purge modified files from Cloudflare using Python script
+      - name: Checkout claris-gh-actions repository
+        uses: actions/checkout@v4
+        with:
+          repository: simonheimlicher/claris-gh-actions
+          path: claris-gh-actions
+  
+      - name: Purge modified files from Cloudflare
         run: |
-          # Compute SHA256 hashes of all published files and sort them
-          find ${{ env.ARTIFACT_PATH }} -type f -exec sha256sum {} \; | sed "s|  ${{ env.ARTIFACT_PATH }}/|  |" | sort > public-hash-manifest.txt
+          # Use canonical base URL if provided, else fall back to base URL
+          EFFECTIVE_BASE_URL="${{ env.CANONICAL_BASE_URL || env.BASE_URL }}"
 
-      # Compare current and previous hash manifest to get changed files
-      - name: Compare manifests
-        id: compare
-        run: |
-          # Default to full purge
-          cp public-hash-manifest.txt changed-hash-manifest.txt
-          echo "FULL_PURGE=true" >> $GITHUB_ENV
+          echo "📂 ARTIFACT_PATH: $ARTIFACT_PATH"
+          echo "🌍 BASE_URL: $BASE_URL"
+          echo "🌐 CANONICAL_BASE_URL: $CANONICAL_BASE_URL"
+          echo "🔗 Using effective base URL: $EFFECTIVE_BASE_URL"
 
-          # Validate previous manifest before trying diff
-          if [ -f previous-hash-manifest.txt ] && file previous-hash-manifest.txt | grep -q 'ASCII text'; then
-            echo "Previous hash manifest is valid. Attempting diff."
-            comm -13 previous-hash-manifest.txt public-hash-manifest.txt > changed-hash-manifest.txt
-
-            # Extract filenames from changed lines
-            awk '{ print $2 }' changed-hash-manifest.txt > changed-files.txt
-
-            # If any files changed, switch to selective purge
-            if [ -s changed-files.txt ]; then
-              echo "Detected content changes. Doing selective purge."
-              sed -n '1,3p' changed-files.txt  # log a few
-              echo "FULL_PURGE=false" >> $GITHUB_ENV
-            else
-              echo "No content changes detected. Skipping purge."
-              echo "FULL_PURGE=false" >> $GITHUB_ENV
-              : > changed-files.txt
-            fi
-          else
-            echo "Invalid or missing previous hash manifest. Forcing full purge."
-            rm -f previous-hash-manifest.txt
-            cp public-hash-manifest.txt changed-hash-manifest.txt
-            awk '{ print $2 }' changed-hash-manifest.txt > changed-files.txt
-          fi
-
-          echo "--- Changed files ---"
-          cat changed-files.txt || echo "(none)"
-
-      # Build current-urls.txt from changed file paths and prepend base URL
-      - name: Build changed URL list
-        run: |
-          BASE_URL="${{ env.HUGO_CANONICAL_BASE_URL || env.HUGO_BASE_URL }}"
-          BASE_URL="${BASE_URL%/}"  # normalize trailing slash
-          awk -v base="$BASE_URL" '{ print base "/" $0 }' changed-files.txt > current-urls.txt
-
-      # Build JSON payload for Cloudflare purge API
-      - name: Build purge payload
-        id: purge
-        run: |
-          if [ -s current-urls.txt ]; then
-            FILES=$(jq -Rs 'split("\n") | map(select(. != ""))' < current-urls.txt | jq -c .)
-            echo "files=$FILES" >> "$GITHUB_OUTPUT"
-            echo "Files to purge:"
-            echo "$FILES" | jq -r '.[]'
-          else
-            echo "files=[]" >> "$GITHUB_OUTPUT"
-            echo "No files to purge as `current-urls.txt` is empty"
-          fi
+          python3 claris-gh-actions/cloudflare/purge-modified.py \
+            --public-dir "${{ env.ARTIFACT_PATH }}" \
+            --base-url "${{ env.CANONICAL_BASE_URL }}" \
+            --zone-id "${{ secrets.CLOUDFLARE_ZONE_ID }}" \
+            --api-token "${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            --prev-manifest previous-hash-manifest.txt \
+            --save-manifest public-hash-manifest.txt \
+            --batch-size 30
 
       # Save current hash manifest to cache for the next deploy
       - name: Cache current manifest for future deploy
