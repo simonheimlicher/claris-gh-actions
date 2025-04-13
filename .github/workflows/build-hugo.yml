@@ -91,14 +91,6 @@ jobs:
             npm ci
           fi
 
-      # Check if Hugo'` `cacheDir` is properly configured
-      - name: Check Hugo cache configuration
-        id: hugo-cache-config
-        run: |
-          hugo config --format json \
-            --cacheDir "${{ env.HUGO_CACHE_DIR }}" \
-            | jq -r '.cachedir, .caches.images.dir, .resourcedir'
-
       # Restore Hugo's internal cache for faster builds (e.g. image processing)
       - name: Restore Hugo cache
         id: cache-restore
