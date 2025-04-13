@@ -35,8 +35,25 @@ jobs:
       ARTIFACT_PATH: public
       BASE_URL: ${{ inputs.BASE_URL }}
       CANONICAL_BASE_URL: ${{ inputs.CANONICAL_BASE_URL }}
+      # Use canonical base URL if defined, otherwise fall back to base URL
+      EFFECTIVE_BASE_URL: ${{ inputs.CANONICAL_BASE_URL || inputs.BASE_URL }}
+      # Manifest filenames (centralized for maintainability)
+      MANIFEST_PREV: public-manifest_restored.txt
+      MANIFEST_CURR: public-manifest.txt
+      # Separate restore and save cache keys to avoid collision issues
+      MANIFEST_CACHE_KEY: public_manifest
+      MANIFEST_SAVE_KEY: manifest-${{ github.ref_name }}-save
 
     steps:
+      # Define the `HUGO_CACHE_DIR` and `HUGO_CACHE_KEY` environment variables.
+      # since the cache dir should be located in the runner's temporary
+      # directory and it is OS-specific, we need access to `runner.temp` and
+      # `runner.os`. This is only available in the `steps` section down here,
+      # not in the `env` section above
+      - name: Set manifest cache key with RUNNER_OS
+        run: |
+          echo "MANIFEST_CACHE_KEY=${{ env.MANIFEST_CACHE_KEY }}-${{ runner.os }}-${{ github.ref_name }}" >> "$GITHUB_ENV"
+
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
@@ -64,13 +81,14 @@ jobs:
           # Use the newly released Wrangler v3 with the wranglerVersion property
           wranglerVersion: '3'
 
-      # Restore previously cached URL hash manifest to detect changes
+      # Restore previously cached hash manifest to detect changes in content
       - name: Restore previous manifest
         id: restore-manifest
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@v4
         with:
-          path: previous-hash-manifest.txt
-          key: manifest-${{ env.BRANCH_NAME }}
+          path: ${{ env.MANIFEST_PREV }}
+          key: ${{ env.MANIFEST_CACHE_KEY }}-${{ github.run_id }}
+          restore-keys: ${{ env.MANIFEST_CACHE_KEY }}-
 
       # Purge modified files from Cloudflare using Python script
       - name: Checkout claris-gh-actions repository
@@ -78,29 +96,27 @@ jobs:
         with:
           repository: simonheimlicher/claris-gh-actions
           path: claris-gh-actions
-  
+
+      # Run Python-based purge tool to invalidate only changed URLs on Cloudflare
       - name: Purge modified files from Cloudflare
         run: |
-          # Use canonical base URL if provided, else fall back to base URL
-          EFFECTIVE_BASE_URL="${{ env.CANONICAL_BASE_URL || env.BASE_URL }}"
-
           echo "📂 ARTIFACT_PATH: $ARTIFACT_PATH"
           echo "🌍 BASE_URL: $BASE_URL"
           echo "🌐 CANONICAL_BASE_URL: $CANONICAL_BASE_URL"
-          echo "🔗 Using effective base URL: $EFFECTIVE_BASE_URL"
+          echo "🔗 Using effective base URL: ${{ env.EFFECTIVE_BASE_URL }}"
 
           python3 claris-gh-actions/cloudflare/purge-modified.py \
             --public-dir "${{ env.ARTIFACT_PATH }}" \
-            --base-url "${{ env.CANONICAL_BASE_URL }}" \
+            --base-url "${{ env.EFFECTIVE_BASE_URL }}" \
             --zone-id "${{ secrets.CLOUDFLARE_ZONE_ID }}" \
             --api-token "${{ secrets.CLOUDFLARE_API_TOKEN }}" \
-            --prev-manifest previous-hash-manifest.txt \
-            --save-manifest public-hash-manifest.txt \
+            --prev-manifest "${{ env.MANIFEST_PREV }}" \
+            --save-manifest "${{ env.MANIFEST_CURR }}" \
             --batch-size 30
 
-      # Save current hash manifest to cache for the next deploy
+      # Save current hash manifest for comparison in future deploys
       - name: Cache current manifest for future deploy
-        uses: actions/cache/save@v3
+        uses: actions/cache/save@v4
         with:
-          path: public-hash-manifest.txt
-          key: manifest-${{ env.BRANCH_NAME }}
+          path: ${{ env.MANIFEST_CURR }}
+          key: ${{ steps.restore-manifest.outputs.cache-primary-key }}

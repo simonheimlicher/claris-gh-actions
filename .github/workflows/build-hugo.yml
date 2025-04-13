@@ -26,17 +26,35 @@ jobs:
     permissions:
       contents: read
     env:
+      # Custom environment variables to support theme logic and deployment
+      BRANCH_NAME: ${{ github.ref_name }}
+      BASE_URL: ${{ inputs.BASE_URL }}
+      CANONICAL_BASE_URL: ${{ inputs.CANONICAL_BASE_URL }}
       HUGO_VERSION: ${{ inputs.HUGO_VERSION }}
       HUGO_ENVIRONMENT: ${{ inputs.HUGO_ENVIRONMENT }}
       # For maximum backward compatibility with Hugo modules
       HUGO_ENV: ${{ inputs.HUGO_ENVIRONMENT }}
-      # Custom environment variables to support theme logic and deployment
-      HUGO_BASE_URL: ${{ inputs.BASE_URL }}
-      HUGO_CANONICAL_BASE_URL: ${{ inputs.CANONICAL_BASE_URL }}
-      BRANCH_NAME: ${{ github.ref_name }}
+      HUGO_CACHE_DIR: hugo_cache
+      HUGO_CACHE_KEY: hugo_cache
+      HUGO_CLARIS_AUTHOR_EMAIL: ${{ secrets.HUGO_CLARIS_AUTHOR_EMAIL }}
       ARTIFACT_PATH: public
 
     steps:
+      # Define the `HUGO_CACHE_DIR` and `HUGO_CACHE_KEY` environment variables.
+      # since the cache dir should be located in the runner's temporary
+      # directory and it is OS-specific, we need access to `runner.temp` and
+      # `runner.os`. This is only available in the `steps` section down here,
+      # not in the `env` section above
+      - name: Set Hugo cache dir and key with RUNNER_TEMP and RUNNER_OS
+        run: |
+          echo "HUGO_CACHE_DIR=${{ runner.temp }}/${{ env.HUGO_CACHE_DIR }}" >> "$GITHUB_ENV"
+          echo "HUGO_CACHE_KEY=${{ env.HUGO_CACHE_KEY }}-${{ runner.os }}-${{ github.ref_name }}" >> "$GITHUB_ENV"
+
+      - name: Debug Hugo cache settings
+        run: |
+          echo "HUGO_CACHE_DIR=$HUGO_CACHE_DIR"
+          echo "HUGO_CACHE_KEY=$HUGO_CACHE_KEY"
+
       # Install Hugo extended version
       - name: Install Hugo CLI
         run: |
@@ -61,41 +79,59 @@ jobs:
             npm ci
           fi
 
+      # Check if Hugo'` `cacheDir` is properly configured
+      - name: Check Hugo cache configuration
+        id: hugo-cache-config
+        run: |
+          hugo config --format json \
+            --cacheDir "${{ env.HUGO_CACHE_DIR }}" \
+            | jq -r '.cachedir, .caches.images.dir, .resourcedir'
+
       # Restore Hugo's internal cache for faster builds (e.g. image processing)
       - name: Restore Hugo cache
         id: cache-restore
         uses: actions/cache/restore@v4
         with:
-          path: ${{ runner.temp }}/hugo_cache
-          key: hugo-${{ github.run_id }}
-          restore-keys: hugo-
+          path: ${{ env.HUGO_CACHE_DIR }}
+          key: ${{ env.HUGO_CACHE_KEY }}-${{ github.run_id }}
+          restore-keys: ${{ env.HUGO_CACHE_KEY }}-
 
       # Check if hugo_stats.json exists (required for Hugo Claris theme)
       - name: Check for hugo_stats.json
-        env:
-          HUGO_CLARIS_AUTHOR_EMAIL: ${{ secrets.HUGO_CLARIS_AUTHOR_EMAIL }}
         run: |
-          echo 'hugo config --format yaml --cacheDir "${{ runner.temp }}/hugo_cache" | grep -B3 cache'
-          hugo config --format yaml --cacheDir "${{ runner.temp }}/hugo_cache" | grep -B3 cache
           if ! [ -f hugo_stats.json ]; then
             echo "Running hugo to create 'hugo_stats.json' as this required file is missing."
             hugo --gc --minify \
-              --cacheDir "${{ runner.temp }}/hugo_cache" \
-              --baseURL "${{ env.HUGO_BASE_URL }}"
+              --cacheDir "${{ env.HUGO_CACHE_DIR }}" \
+              --baseURL "${{ env.BASE_URL }}"
           fi
           if ! [ -f hugo_stats.json ]; then
             echo "Fatal error: Hugo failed to create hugo_stats.json"
             exit 1
           fi
 
+      - name: Check size of Hugo resources after first run
+        run: |
+          du -sch resources/*/* || true
+
+      - name: Check size of Hugo cache after first run
+        run: |
+          du -sch "${{ env.HUGO_CACHE_DIR }}"/*/* || true
+
       # Perform the final build using Hugo
       - name: Build with Hugo
-        env:
-          HUGO_CLARIS_AUTHOR_EMAIL: ${{ secrets.HUGO_CLARIS_AUTHOR_EMAIL }}
         run: |
           hugo --gc --minify \
-            --cacheDir "${{ runner.temp }}/hugo_cache" \
-            --baseURL "${{ env.HUGO_BASE_URL }}"
+            --cacheDir "${{ env.HUGO_CACHE_DIR }}" \
+            --baseURL "${{ env.BASE_URL }}"
+
+      - name: Check size of Hugo resources after final run
+        run: |
+          du -sch resources/*/* || true
+
+      - name: Check size of Hugo cache after final run
+        run: |
+          du -sch "${{ env.HUGO_CACHE_DIR }}"/*/* || true
 
       # Upload the built site as an artifact for later deployment
       - name: Upload build artifact
@@ -107,34 +143,14 @@ jobs:
           # The file, directory or wildcard pattern that describes what to upload
           path: ${{ env.ARTIFACT_PATH }}
 
-          # The desired behavior if no files are found using the provided path.
-          # Available Options:
-          #   warn: Output a warning but do not fail the action
-          #   error: Fail the action with an error message
-          #   ignore: Do not output any warnings or errors, the action does not fail
-          # Optional. Default is 'warn'
+          # Consider no files being found using the provided path an error
+          # and fail the action with an error message
           if-no-files-found: error
-
-          # Duration after which artifact will expire in days. 0 means using default retention.
-          # Minimum 1 day.
-          # Maximum 90 days unless changed from the repository settings page.
-          # Optional. Defaults to repository settings.
-          retention-days: 90
-
-          # The level of compression for Zlib to be applied to the artifact archive.
-          # The value can range from 0 to 9.
-          # For large files that are not easily compressed, a value of 0 is recommended for significantly faster uploads.
-          # Optional. Default is '6'
-          compression-level: 0
 
       # Save Hugo cache after build
       - name: Save Hugo cache
         uses: actions/cache/save@v4
         with:
-          path: ${{ runner.temp }}/hugo_cache
+          path: ${{ env.HUGO_CACHE_DIR }}
           key: ${{ steps.cache-restore.outputs.cache-primary-key }}
-      # Save Hugo cache after build
-      - name: Check size of Hugo cache
-        run: |
-          du -sch ${{ runner.temp }}/*/*
-          du -sch ${{ runner.temp }}/hugo_cache/*/*
+
