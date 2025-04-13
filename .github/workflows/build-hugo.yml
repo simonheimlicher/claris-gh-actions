@@ -1,4 +1,5 @@
 name: Build Hugo Site
+
 on:
   workflow_call:
     inputs:
@@ -31,6 +32,7 @@ jobs:
     env:
       # Custom environment variables to support theme logic and deployment
       BRANCH_NAME: ${{ github.ref_name }}
+      ARTIFACT_PATH: public
       HUGO_BASE_URL: ${{ inputs.BASE_URL }}
       HUGO_CANONICAL_BASE_URL: ${{ inputs.CANONICAL_BASE_URL }}
       HUGO_VERSION: ${{ inputs.HUGO_VERSION }}
@@ -41,7 +43,6 @@ jobs:
       HUGO_CACHE_KEY: hugo_cache
       HUGO_CLARIS_AUTHOR_EMAIL: ${{ secrets.HUGO_CLARIS_AUTHOR_EMAIL }}
       DART_SASS_VERSION: ${{ inputs.DART_SASS_VERSION }}
-      ARTIFACT_PATH: public
 
     steps:
       # Define the `HUGO_CACHE_DIR` and `HUGO_CACHE_KEY` environment variables.

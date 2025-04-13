@@ -67,7 +67,6 @@ jobs:
     uses: simonheimlicher/claris-gh-actions/.github/workflows/deploy-cloudflare-pages.yml@main
     with:
       BASE_URL: ${{ github.ref == 'refs/heads/main' && inputs.BASE_URL || inputs.STAGE_BASE_URL }}
-      CANONICAL_BASE_URL: ${{ github.ref == 'refs/heads/main' && inputs.CANONICAL_BASE_URL || inputs.STAGE_CANONICAL_BASE_URL }}
       CLOUDFLARE_PROJECT_NAME: ${{ github.ref == 'refs/heads/main' && inputs.CLOUDFLARE_PROJECT_NAME || inputs.CLOUDFLARE_STAGE_PROJECT_NAME }}
     secrets:
       CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}

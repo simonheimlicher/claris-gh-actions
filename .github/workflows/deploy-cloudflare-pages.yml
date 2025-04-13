@@ -7,10 +7,6 @@ on:
       BASE_URL:
         required: true
         type: string
-      # The canonical base URL (only has an effect if it differs from the base URL)
-      CANONICAL_BASE_URL:
-        required: false
-        type: string
       CLOUDFLARE_PROJECT_NAME:
         required: true
         type: string
@@ -34,21 +30,16 @@ jobs:
       BRANCH_NAME: ${{ github.ref_name }}
       ARTIFACT_PATH: public
       BASE_URL: ${{ inputs.BASE_URL }}
-      CANONICAL_BASE_URL: ${{ inputs.CANONICAL_BASE_URL }}
-      # Use canonical base URL if defined, otherwise fall back to base URL
-      EFFECTIVE_BASE_URL: ${{ inputs.CANONICAL_BASE_URL || inputs.BASE_URL }}
       # Manifest filenames (centralized for maintainability)
-      MANIFEST_PREV: public-manifest_restored.txt
-      MANIFEST_CURR: public-manifest.txt
-      # Separate restore and save cache keys to avoid collision issues
+      MANIFEST_FILE: public_manifest
+      MANIFEST_NEW: public_manifest_new
       MANIFEST_CACHE_KEY: public_manifest
 
     steps:
-      # Define the `MANIFEST_CACHE_KEY` environment variables.
-      # since the cache dir should be located in the runner's temporary
-      # directory and it is OS-specific, we need access to `runner.temp` and
-      # `runner.os`. This is only available in the `steps` section down here,
-      # not in the `env` section above
+      # Define the `MANIFEST_CACHE_KEY` environment variable. Since the cache
+      # directory is OS-specific, we need access to `runner.os`. This is only
+      # available in the `steps` section down here, not in the `env` section
+      # above
       - name: Set manifest cache key with RUNNER_OS
         run: |
           MANIFEST_CACHE_KEY="${{ env.MANIFEST_CACHE_KEY }}-${{ runner.os }}-${{ github.ref_name }}"
@@ -56,7 +47,7 @@ jobs:
 
       - name: Debug manifest cache variables
         run: |
-          echo "MANIFEST_PREV=$MANIFEST_PREV"
+          echo "MANIFEST_FILE=$MANIFEST_FILE"
           echo "MANIFEST_CACHE_KEY=$MANIFEST_CACHE_KEY"
 
       - name: Download build artifact
@@ -91,7 +82,7 @@ jobs:
         id: restore-manifest
         uses: actions/cache/restore@v4
         with:
-          path: ${{ env.MANIFEST_PREV }}
+          path: ${{ env.MANIFEST_FILE }}
           key: ${{ env.MANIFEST_CACHE_KEY }}-${{ github.run_id }}
           restore-keys: ${{ env.MANIFEST_CACHE_KEY }}-
 
@@ -110,18 +101,20 @@ jobs:
             --base-url "${{ env.BASE_URL }}" \
             --zone-id "${{ secrets.CLOUDFLARE_ZONE_ID }}" \
             --api-token "${{ secrets.CLOUDFLARE_API_TOKEN }}" \
-            --prev-manifest "${{ env.MANIFEST_PREV }}" \
-            --save-manifest "${{ env.MANIFEST_CURR }}" \
+            --prev-manifest "${{ env.MANIFEST_FILE }}" \
+            --save-manifest "${{ env.MANIFEST_NEW }}" \
             --batch-size 30
+          # Update manifest to be cached
+          mv -f "${{ env.MANIFEST_NEW }}" "${{ env.MANIFEST_FILE }}"
 
 
       # Save current hash manifest for comparison in future deploys
       - name: Debug manifest cache key
         run: |
           echo "Manifest cache key: ${{ steps.restore-manifest.outputs.cache-primary-key }}"
-      - name: Cache current manifest for future deploy
+      - name: Save current manifest for future deploy
         uses: actions/cache/save@v4
         with:
-          path: ${{ env.MANIFEST_CURR }}
+          path: ${{ env.MANIFEST_FILE }}
           key: ${{ steps.restore-manifest.outputs.cache-primary-key }}
 
