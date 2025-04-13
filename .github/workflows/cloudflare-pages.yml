@@ -27,6 +27,9 @@ on:
       HUGO_ENVIRONMENT:
         required: true
         type: string
+      DART_SASS_VERSION:
+        required: true
+        type: string
       CLOUDFLARE_PROJECT_NAME:
         type: string
         required: true
@@ -54,6 +57,7 @@ jobs:
       CANONICAL_BASE_URL: ${{ github.ref == 'refs/heads/main' && inputs.CANONICAL_BASE_URL || inputs.STAGE_CANONICAL_BASE_URL }}
       HUGO_VERSION: ${{ inputs.HUGO_VERSION }}
       HUGO_ENVIRONMENT: ${{ inputs.HUGO_ENVIRONMENT }}
+      DART_SASS_VERSION: ${{ inputs.DART_SASS_VERSION }}
     secrets:
       HUGO_CLARIS_AUTHOR_EMAIL: ${{ secrets.HUGO_CLARIS_AUTHOR_EMAIL }}
 

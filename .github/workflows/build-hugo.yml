@@ -16,6 +16,9 @@ on:
       HUGO_ENVIRONMENT:
         required: true
         type: string
+      DART_SASS_VERSION:
+        required: true
+        type: string
     secrets:
       HUGO_CLARIS_AUTHOR_EMAIL:
         required: true
@@ -37,6 +40,7 @@ jobs:
       HUGO_CACHE_DIR: hugo_cache
       HUGO_CACHE_KEY: hugo_cache
       HUGO_CLARIS_AUTHOR_EMAIL: ${{ secrets.HUGO_CLARIS_AUTHOR_EMAIL }}
+      DART_SASS_VERSION: ${{ inputs.DART_SASS_VERSION }}
       ARTIFACT_PATH: public
 
     steps:
@@ -61,9 +65,16 @@ jobs:
           wget -O ${{ runner.temp }}/hugo.deb https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_extended_${HUGO_VERSION}_linux-amd64.deb \
           && sudo dpkg -i ${{ runner.temp }}/hugo.deb
 
-      # Install Dart Sass for SCSS processing
+      # Install Dart Sass for SCSS processing NOTE: Instead of the official Snap
+      # method (`sudo snap install dart-sass`), we install from prebuilt
+      # binaries to avoid issues indefinite hangs in GitHub-hosted runners.
       - name: Install Dart Sass
-        run: sudo snap install dart-sass
+        run: |
+          curl -LJO https://github.com/sass/dart-sass/releases/download/${{ env.DART_SASS_VERSION }}/dart-sass-${{ env.DART_SASS_VERSION }}-linux-x64.tar.gz
+          tar -xf dart-sass-${{ env.DART_SASS_VERSION }}-linux-x64.tar.gz
+          sudo cp -r dart-sass/* /usr/local/bin
+          sudo chmod +x /usr/local/bin/sass
+          rm -rf dart-sass*
 
       # Checkout project with all submodules for themes or dependencies
       - name: Checkout
@@ -148,9 +159,14 @@ jobs:
           if-no-files-found: error
 
       # Save Hugo cache after build
+      #
+      # NOTE: for the initial run, we need a fallback key, otherwise the restore
+      # step fails
+      - name: Debug Hugo cache key
+        run: |
+          echo "Hugo cache key: ${{ steps.cache-restore.outputs.cache-primary-key }}"
       - name: Save Hugo cache
         uses: actions/cache/save@v4
         with:
           path: ${{ env.HUGO_CACHE_DIR }}
           key: ${{ steps.cache-restore.outputs.cache-primary-key }}
-

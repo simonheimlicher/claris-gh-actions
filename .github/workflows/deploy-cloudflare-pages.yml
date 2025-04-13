@@ -42,17 +42,22 @@ jobs:
       MANIFEST_CURR: public-manifest.txt
       # Separate restore and save cache keys to avoid collision issues
       MANIFEST_CACHE_KEY: public_manifest
-      MANIFEST_SAVE_KEY: manifest-${{ github.ref_name }}-save
 
     steps:
-      # Define the `HUGO_CACHE_DIR` and `HUGO_CACHE_KEY` environment variables.
+      # Define the `MANIFEST_CACHE_KEY` environment variables.
       # since the cache dir should be located in the runner's temporary
       # directory and it is OS-specific, we need access to `runner.temp` and
       # `runner.os`. This is only available in the `steps` section down here,
       # not in the `env` section above
       - name: Set manifest cache key with RUNNER_OS
         run: |
-          echo "MANIFEST_CACHE_KEY=${{ env.MANIFEST_CACHE_KEY }}-${{ runner.os }}-${{ github.ref_name }}" >> "$GITHUB_ENV"
+          MANIFEST_CACHE_KEY="${{ env.MANIFEST_CACHE_KEY }}-${{ runner.os }}-${{ github.ref_name }}"
+          echo "MANIFEST_CACHE_KEY=$MANIFEST_CACHE_KEY" >> "$GITHUB_ENV"
+
+      - name: Debug manifest cache variables
+        run: |
+          echo "MANIFEST_PREV=$MANIFEST_PREV"
+          echo "MANIFEST_CACHE_KEY=$MANIFEST_CACHE_KEY"
 
       - name: Download build artifact
         uses: actions/download-artifact@v4
@@ -114,9 +119,17 @@ jobs:
             --save-manifest "${{ env.MANIFEST_CURR }}" \
             --batch-size 30
 
+
       # Save current hash manifest for comparison in future deploys
+      #
+      # NOTE: for the initial run, we need a fallback key, otherwise the restore
+      # step fails
+      - name: Debug manifest cache key
+        run: |
+          echo "Manifest cache key: ${{ steps.restore-manifest.outputs.cache-primary-key }}"
       - name: Cache current manifest for future deploy
         uses: actions/cache/save@v4
         with:
           path: ${{ env.MANIFEST_CURR }}
           key: ${{ steps.restore-manifest.outputs.cache-primary-key }}
+
