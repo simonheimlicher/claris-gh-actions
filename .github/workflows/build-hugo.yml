@@ -31,8 +31,8 @@ jobs:
     env:
       # Custom environment variables to support theme logic and deployment
       BRANCH_NAME: ${{ github.ref_name }}
-      BASE_URL: ${{ inputs.BASE_URL }}
-      CANONICAL_BASE_URL: ${{ inputs.CANONICAL_BASE_URL }}
+      HUGO_BASE_URL: ${{ inputs.BASE_URL }}
+      HUGO_CANONICAL_BASE_URL: ${{ inputs.CANONICAL_BASE_URL }}
       HUGO_VERSION: ${{ inputs.HUGO_VERSION }}
       HUGO_ENVIRONMENT: ${{ inputs.HUGO_ENVIRONMENT }}
       # For maximum backward compatibility with Hugo modules
@@ -114,7 +114,7 @@ jobs:
             echo "Running hugo to create 'hugo_stats.json' as this required file is missing."
             hugo --gc --minify \
               --cacheDir "${{ env.HUGO_CACHE_DIR }}" \
-              --baseURL "${{ env.BASE_URL }}"
+              --baseURL "${{ env.HUGO_BASE_URL }}"
           fi
           if ! [ -f hugo_stats.json ]; then
             echo "Fatal error: Hugo failed to create hugo_stats.json"
@@ -134,7 +134,7 @@ jobs:
         run: |
           hugo --gc --minify \
             --cacheDir "${{ env.HUGO_CACHE_DIR }}" \
-            --baseURL "${{ env.BASE_URL }}"
+            --baseURL "${{ env.HUGO_BASE_URL }}"
 
       - name: Check size of Hugo resources after final run
         run: |

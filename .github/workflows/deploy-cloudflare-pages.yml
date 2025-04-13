@@ -105,14 +105,9 @@ jobs:
       # Run Python-based purge tool to invalidate only changed URLs on Cloudflare
       - name: Purge modified files from Cloudflare
         run: |
-          echo "📂 ARTIFACT_PATH: $ARTIFACT_PATH"
-          echo "🌍 BASE_URL: $BASE_URL"
-          echo "🌐 CANONICAL_BASE_URL: $CANONICAL_BASE_URL"
-          echo "🔗 Using effective base URL: ${{ env.EFFECTIVE_BASE_URL }}"
-
           python3 claris-gh-actions/cloudflare/purge-modified.py \
             --public-dir "${{ env.ARTIFACT_PATH }}" \
-            --base-url "${{ env.EFFECTIVE_BASE_URL }}" \
+            --base-url "${{ env.BASE_URL }}" \
             --zone-id "${{ secrets.CLOUDFLARE_ZONE_ID }}" \
             --api-token "${{ secrets.CLOUDFLARE_API_TOKEN }}" \
             --prev-manifest "${{ env.MANIFEST_PREV }}" \
@@ -121,9 +116,6 @@ jobs:
 
 
       # Save current hash manifest for comparison in future deploys
-      #
-      # NOTE: for the initial run, we need a fallback key, otherwise the restore
-      # step fails
       - name: Debug manifest cache key
         run: |
           echo "Manifest cache key: ${{ steps.restore-manifest.outputs.cache-primary-key }}"
