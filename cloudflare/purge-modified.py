@@ -3,13 +3,15 @@
 Cloudflare cache purge tool based on content hash comparison.
 
 Usage:
-    python cf_purge.py \
+    python purge-modified.py \
         --public-dir ./public \
         --base-url https://example.com \
         --zone-id <your_zone_id> \
         --api-token <your_api_token> \
-        [--prev-manifest previous-hash-manifest.txt] \
-        [--batch-size 30]
+        [--prev-manifest public_manifest] \
+        [--save-manifest public_manifest_new] \
+        [--batch-size 30] \
+        [--full-purge]
 """
 
 import argparse
@@ -71,7 +73,9 @@ def purge_cloudflare(zone_id: str, api_token: str, urls: list[str], batch_size: 
         )
         try:
             with urllib.request.urlopen(req) as res:
+                body = res.read().decode("utf-8")
                 print(f"✅ Batch {i // batch_size + 1} sent. Status: {res.status}")
+                print(f"   ↳ Response: {body}")
             time.sleep(0.5)  # throttle slightly
         except Exception as e:
             print(f"❌ Failed to purge batch {i // batch_size + 1}: {e}")
@@ -83,8 +87,8 @@ def main():
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--zone-id", required=True)
     parser.add_argument("--api-token", required=True)
-    parser.add_argument("--prev-manifest", type=Path, default=Path("previous-hash-manifest.txt"))
-    parser.add_argument("--save-manifest", type=Path, default=Path("public-hash-manifest.txt"))
+    parser.add_argument("--prev-manifest", type=Path, default=Path("public_manifest"))
+    parser.add_argument("--save-manifest", type=Path, default=Path("public_manifest_new"))
     parser.add_argument("--batch-size", type=int, default=30)
     parser.add_argument("--full-purge", action="store_true")
 
@@ -98,7 +102,10 @@ def main():
     previous_lines = load_manifest(args.prev_manifest)
 
     if args.full_purge or not previous_lines:
-        print("⚠️  Full purge mode (no previous manifest or forced).")
+        if args.full_purge:
+            print("⚠️  Purge entire cache due argument `--full-purge`")
+        elif not previous_lines:
+            print(f"⚠️  Purge entire cache because the previous manifest `{args.prev_manifest}` does not exist or is invalid")
         changed_files = [p for _, p in current]
     else:
         changed_files = diff_files(current, previous_lines)

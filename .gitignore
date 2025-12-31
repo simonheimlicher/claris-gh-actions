@@ -1,0 +1,20 @@
+# Environment files
+.env
+.env.*
+.envrc
+
+# Editor directories
+.idea/
+.vscode/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
