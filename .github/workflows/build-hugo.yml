@@ -21,10 +21,11 @@ on:
         required: true
         type: string
       # Suffix for artifact name to distinguish prod vs debug builds
+      # Defaults to HUGO_ENVIRONMENT if not specified
       ARTIFACT_SUFFIX:
         required: false
         type: string
-        default: ''
+        default: ""
     secrets:
       HUGO_CLARIS_AUTHOR_EMAIL:
         required: true
@@ -38,7 +39,8 @@ jobs:
       # Custom environment variables to support theme logic and deployment
       BRANCH_NAME: ${{ github.ref_name }}
       ARTIFACT_PATH: public
-      ARTIFACT_SUFFIX: ${{ inputs.ARTIFACT_SUFFIX }}
+      # Default to HUGO_ENVIRONMENT if ARTIFACT_SUFFIX not provided
+      ARTIFACT_SUFFIX: ${{ inputs.ARTIFACT_SUFFIX || inputs.HUGO_ENVIRONMENT }}
       HUGO_BASE_URL: ${{ inputs.BASE_URL }}
       HUGO_CANONICAL_BASE_URL: ${{ inputs.CANONICAL_BASE_URL }}
       HUGO_VERSION: ${{ inputs.HUGO_VERSION }}
