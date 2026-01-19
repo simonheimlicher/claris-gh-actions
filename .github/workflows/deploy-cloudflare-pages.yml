@@ -10,6 +10,11 @@ on:
       CLOUDFLARE_PROJECT_NAME:
         required: true
         type: string
+      # Suffix for artifact name to match the build artifact
+      ARTIFACT_SUFFIX:
+        required: false
+        type: string
+        default: ''
     secrets:
       # Cloudflare Zone ID is required for manual cache purging
       CLOUDFLARE_ZONE_ID:
@@ -29,6 +34,7 @@ jobs:
       # Define the branch name variable
       BRANCH_NAME: ${{ github.ref_name }}
       ARTIFACT_PATH: public
+      ARTIFACT_SUFFIX: ${{ inputs.ARTIFACT_SUFFIX }}
       BASE_URL: ${{ inputs.BASE_URL }}
       # Manifest filenames (centralized for maintainability)
       MANIFEST_FILE: public_manifest
@@ -42,7 +48,9 @@ jobs:
       # above
       - name: Set manifest cache key with RUNNER_OS
         run: |
-          MANIFEST_CACHE_KEY="${{ env.MANIFEST_CACHE_KEY }}-${{ runner.os }}-${{ github.ref_name }}"
+          SUFFIX="${{ env.ARTIFACT_SUFFIX }}"
+          CACHE_SUFFIX="${SUFFIX:+-$SUFFIX}"
+          MANIFEST_CACHE_KEY="${{ env.MANIFEST_CACHE_KEY }}-${{ runner.os }}-${{ github.ref_name }}${CACHE_SUFFIX}"
           echo "MANIFEST_CACHE_KEY=$MANIFEST_CACHE_KEY" >> "$GITHUB_ENV"
 
       - name: Debug manifest cache variables
@@ -53,10 +61,8 @@ jobs:
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
-          # Name of the artifact to download.
-          # If unspecified, all artifacts for the run are downloaded.
-          # Optional.
-          name: ${{ env.ARTIFACT_PATH }}-${{ env.BRANCH_NAME }}
+          # Name of the artifact to download - must match the build artifact name
+          name: ${{ env.ARTIFACT_PATH }}-${{ env.BRANCH_NAME }}${{ env.ARTIFACT_SUFFIX && format('-{0}', env.ARTIFACT_SUFFIX) || '' }}
           # Destination path. Supports basic tilde expansion.
           path: ${{ env.ARTIFACT_PATH }}
 
@@ -117,4 +123,3 @@ jobs:
         with:
           path: ${{ env.MANIFEST_FILE }}
           key: ${{ steps.restore-manifest.outputs.cache-primary-key }}
-

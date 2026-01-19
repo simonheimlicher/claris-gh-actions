@@ -20,6 +20,11 @@ on:
       DART_SASS_VERSION:
         required: true
         type: string
+      # Suffix for artifact name to distinguish prod vs debug builds
+      ARTIFACT_SUFFIX:
+        required: false
+        type: string
+        default: ''
     secrets:
       HUGO_CLARIS_AUTHOR_EMAIL:
         required: true
@@ -33,6 +38,7 @@ jobs:
       # Custom environment variables to support theme logic and deployment
       BRANCH_NAME: ${{ github.ref_name }}
       ARTIFACT_PATH: public
+      ARTIFACT_SUFFIX: ${{ inputs.ARTIFACT_SUFFIX }}
       HUGO_BASE_URL: ${{ inputs.BASE_URL }}
       HUGO_CANONICAL_BASE_URL: ${{ inputs.CANONICAL_BASE_URL }}
       HUGO_VERSION: ${{ inputs.HUGO_VERSION }}
@@ -52,8 +58,10 @@ jobs:
       # not in the `env` section above
       - name: Set Hugo cache dir and key with RUNNER_TEMP and RUNNER_OS
         run: |
+          SUFFIX="${{ env.ARTIFACT_SUFFIX }}"
+          CACHE_SUFFIX="${SUFFIX:+-$SUFFIX}"
           echo "HUGO_CACHE_DIR=${{ runner.temp }}/${{ env.HUGO_CACHE_DIR }}" >> "$GITHUB_ENV"
-          echo "HUGO_CACHE_KEY=${{ env.HUGO_CACHE_KEY }}-${{ runner.os }}-${{ github.ref_name }}" >> "$GITHUB_ENV"
+          echo "HUGO_CACHE_KEY=${{ env.HUGO_CACHE_KEY }}-${{ runner.os }}-${{ github.ref_name }}${CACHE_SUFFIX}" >> "$GITHUB_ENV"
 
       - name: Debug Hugo cache settings
         run: |
@@ -123,9 +131,20 @@ jobs:
           du -sch "${{ env.HUGO_CACHE_DIR }}"/*/* || true
 
       # Perform the final build using Hugo
+      # For debug builds, skip minification to preserve readability:
+      # 1. Don't pass --minify flag to Hugo
+      # 2. Set HUGO_CLARIS_MINIFY=false to disable theme-level minification
       - name: Build with Hugo
         run: |
-          hugo --gc --minify \
+          MINIFY_FLAG=""
+          HUGO_CLARIS_MINIFY="true"
+          if [ "${{ env.HUGO_ENVIRONMENT }}" = "debug" ]; then
+            HUGO_CLARIS_MINIFY="false"
+          else
+            MINIFY_FLAG="--minify"
+          fi
+          export HUGO_CLARIS_MINIFY
+          hugo --gc $MINIFY_FLAG \
             --cacheDir "${{ env.HUGO_CACHE_DIR }}" \
             --baseURL "${{ env.HUGO_BASE_URL }}"
 
@@ -141,8 +160,8 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          # Name of the artifact to upload: include branch name
-          name: ${{ env.ARTIFACT_PATH }}-${{ env.BRANCH_NAME }}
+          # Name of the artifact to upload: include branch name and optional suffix
+          name: ${{ env.ARTIFACT_PATH }}-${{ env.BRANCH_NAME }}${{ env.ARTIFACT_SUFFIX && format('-{0}', env.ARTIFACT_SUFFIX) || '' }}
 
           # The file, directory or wildcard pattern that describes what to upload
           path: ${{ env.ARTIFACT_PATH }}
