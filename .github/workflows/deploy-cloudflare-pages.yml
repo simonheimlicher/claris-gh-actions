@@ -67,21 +67,11 @@ jobs:
           path: ${{ env.ARTIFACT_PATH }}
 
       - name: Deploy to Cloudflare Pages
-        uses: cloudflare/pages-action@v1
+        uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          # Get account ID: Log in to the Cloudflare dashboard, select your zone in Account Home
-          # and find your account ID in Overview under API on the right-side menu.
-          # If you do not have a zone registered to your account, you can also get your account
-          # ID from the pages.dev URL. E.g: https://dash.cloudflare.com/<ACCOUNT_ID>/pages
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # Get project ID: Log in to the Cloudflare dashboard and select "Workers & Pages" in the
-          # left-hand navigation. The slug being shown for every project is also the project name.
-          # You can change it by going to the "Settings" tab of the Pages project
-          projectName: ${{ inputs.CLOUDFLARE_PROJECT_NAME }}
-          directory: ${{ env.ARTIFACT_PATH }}
-          # Use the newly released Wrangler v3 with the wranglerVersion property
-          wranglerVersion: '3'
+          command: pages deploy ${{ env.ARTIFACT_PATH }} --project-name=${{ inputs.CLOUDFLARE_PROJECT_NAME }}
 
       # Restore previously cached hash manifest to detect changes in content
       - name: Restore previous manifest
