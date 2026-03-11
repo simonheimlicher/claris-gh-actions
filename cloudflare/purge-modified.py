@@ -45,7 +45,18 @@ def diff_files(current: list[tuple[str, str]], previous_lines: set[str]) -> list
 
 def build_urls(files: list[str], base_url: str) -> list[str]:
     base = base_url.rstrip("/")
-    return [f"{base}/{urllib.parse.quote(f)}" for f in files]
+    urls = []
+    for f in files:
+        quoted = urllib.parse.quote(f)
+        urls.append(f"{base}/{quoted}")
+        # Cloudflare caches directory URLs and index.html URLs as separate keys.
+        # Browsers request the directory form (e.g., /leadership/), so we must
+        # purge that in addition to the file path form.
+        if f.endswith("/index.html"):
+            urls.append(f"{base}/{quoted[:-len('index.html')]}")
+        elif f == "index.html":
+            urls.append(f"{base}/")
+    return urls
 
 def purge_cloudflare(zone_id: str, api_token: str, urls: list[str], batch_size: int = 30):
     headers = {
