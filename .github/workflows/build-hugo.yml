@@ -36,8 +36,11 @@ jobs:
     permissions:
       contents: read
     env:
-      # Custom environment variables to support theme logic and deployment
-      BRANCH_NAME: ${{ github.ref_name }}
+      # Custom environment variables to support theme logic and deployment.
+      # Note: BRANCH_NAME is intentionally absent. The branch is a developer-
+      # facing identifier (git); system identifiers (cache keys, artifact
+      # names) are derived instead — see CACHE_ID below and the artifact-
+      # upload step.
       ARTIFACT_PATH: public
       # Default to HUGO_ENVIRONMENT if ARTIFACT_SUFFIX not provided
       ARTIFACT_SUFFIX: ${{ inputs.ARTIFACT_SUFFIX || inputs.HUGO_ENVIRONMENT }}
@@ -48,22 +51,27 @@ jobs:
       # For maximum backward compatibility with Hugo modules
       HUGO_ENV: ${{ inputs.HUGO_ENVIRONMENT }}
       HUGO_CACHE_DIR: hugo_cache
-      HUGO_CACHE_KEY: hugo_cache
+      HUGO_CACHE_KEY_PREFIX: hugo_cache
       HUGO_CLARIS_AUTHOR_EMAIL: ${{ secrets.HUGO_CLARIS_AUTHOR_EMAIL }}
       DART_SASS_VERSION: ${{ inputs.DART_SASS_VERSION }}
 
     steps:
-      # Define the `HUGO_CACHE_DIR` and `HUGO_CACHE_KEY` environment variables.
-      # since the cache dir should be located in the runner's temporary
-      # directory and it is OS-specific, we need access to `runner.temp` and
-      # `runner.os`. This is only available in the `steps` section down here,
-      # not in the `env` section above
-      - name: Set Hugo cache dir and key with RUNNER_TEMP and RUNNER_OS
+      # Compute HUGO_CACHE_DIR and HUGO_CACHE_KEY. The cache key binds to:
+      #   (runner OS, a deterministic hash of the git ref, artifact suffix)
+      # Using a hash of the ref keeps the cache key DNS/filesystem-safe for
+      # arbitrary branch names (including those with '/'), without restricting
+      # what developers can name their branches.
+      - name: Set Hugo cache dir and key
+        env:
+          GIT_REF: ${{ github.ref }}
         run: |
-          SUFFIX="${{ env.ARTIFACT_SUFFIX }}"
+          CACHE_ID=$(printf '%s' "$GIT_REF" | sha1sum | cut -c1-12)
+          SUFFIX="$ARTIFACT_SUFFIX"
           CACHE_SUFFIX="${SUFFIX:+-$SUFFIX}"
-          echo "HUGO_CACHE_DIR=${{ runner.temp }}/${{ env.HUGO_CACHE_DIR }}" >> "$GITHUB_ENV"
-          echo "HUGO_CACHE_KEY=${{ env.HUGO_CACHE_KEY }}-${{ runner.os }}-${{ github.ref_name }}${CACHE_SUFFIX}" >> "$GITHUB_ENV"
+          {
+            printf 'HUGO_CACHE_DIR=%s/%s\n' "$RUNNER_TEMP" "$HUGO_CACHE_DIR"
+            printf 'HUGO_CACHE_KEY=%s-%s-%s%s\n' "$HUGO_CACHE_KEY_PREFIX" "$RUNNER_OS" "$CACHE_ID" "$CACHE_SUFFIX"
+          } >> "$GITHUB_ENV"
 
       - name: Debug Hugo cache settings
         run: |
@@ -73,8 +81,9 @@ jobs:
       # Install Hugo extended version
       - name: Install Hugo CLI
         run: |
-          wget -O ${{ runner.temp }}/hugo.deb https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_extended_${HUGO_VERSION}_linux-amd64.deb \
-          && sudo dpkg -i ${{ runner.temp }}/hugo.deb
+          wget -O "${RUNNER_TEMP}/hugo.deb" \
+            "https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_extended_${HUGO_VERSION}_linux-amd64.deb"
+          sudo dpkg -i "${RUNNER_TEMP}/hugo.deb"
 
       # Install Dart Sass for SCSS processing NOTE: Instead of the official Snap
       # method (`sudo snap install dart-sass`), we install from prebuilt
@@ -158,12 +167,15 @@ jobs:
         run: |
           du -sch "${{ env.HUGO_CACHE_DIR }}"/*/* || true
 
-      # Upload the built site as an artifact for later deployment
+      # Upload the built site as an artifact for later deployment.
+      # Artifacts are scoped to the workflow run, so the suffix alone
+      # (prod/debug) is enough to disambiguate within this run — no branch
+      # name needed. Keeping the branch out avoids the artifact-upload
+      # action's character restrictions (e.g. '/' is not allowed).
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          # Name of the artifact to upload: include branch name and optional suffix
-          name: ${{ env.ARTIFACT_PATH }}-${{ env.BRANCH_NAME }}${{ env.ARTIFACT_SUFFIX && format('-{0}', env.ARTIFACT_SUFFIX) || '' }}
+          name: ${{ env.ARTIFACT_PATH }}-${{ env.ARTIFACT_SUFFIX }}
 
           # The file, directory or wildcard pattern that describes what to upload
           path: ${{ env.ARTIFACT_PATH }}

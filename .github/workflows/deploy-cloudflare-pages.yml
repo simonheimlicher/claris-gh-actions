@@ -36,8 +36,10 @@ jobs:
       contents: read
       deployments: write
     env:
-      # Define the branch name variable
-      BRANCH_NAME: ${{ github.ref_name }}
+      # Note: branch name is NOT a job-level env. It's only needed at the
+      # wrangler-action step (for Cloudflare's --branch flag), where it is
+      # scoped explicitly. System identifiers (cache keys, artifact names)
+      # are derived from a hash of the git ref — see CACHE_ID below.
       ARTIFACT_PATH: public
       # Default to HUGO_ENVIRONMENT if ARTIFACT_SUFFIX not provided
       ARTIFACT_SUFFIX: ${{ inputs.ARTIFACT_SUFFIX || inputs.HUGO_ENVIRONMENT }}
@@ -45,39 +47,49 @@ jobs:
       # Manifest filenames (centralized for maintainability)
       MANIFEST_FILE: public_manifest
       MANIFEST_NEW: public_manifest_new
-      MANIFEST_CACHE_KEY: public_manifest
+      MANIFEST_CACHE_KEY_PREFIX: public_manifest
 
     steps:
-      # Define the `MANIFEST_CACHE_KEY` environment variable. Since the cache
-      # directory is OS-specific, we need access to `runner.os`. This is only
-      # available in the `steps` section down here, not in the `env` section
-      # above
-      - name: Set manifest cache key with RUNNER_OS
+      # Compute MANIFEST_CACHE_KEY. Binds to (runner OS, hash of git ref,
+      # artifact suffix). Hash-based so the key is DNS/filesystem-safe for
+      # arbitrary branch names, without constraining what developers name
+      # their branches.
+      - name: Set manifest cache key
+        env:
+          GIT_REF: ${{ github.ref }}
         run: |
-          SUFFIX="${{ env.ARTIFACT_SUFFIX }}"
+          CACHE_ID=$(printf '%s' "$GIT_REF" | sha1sum | cut -c1-12)
+          SUFFIX="$ARTIFACT_SUFFIX"
           CACHE_SUFFIX="${SUFFIX:+-$SUFFIX}"
-          MANIFEST_CACHE_KEY="${{ env.MANIFEST_CACHE_KEY }}-${{ runner.os }}-${{ github.ref_name }}${CACHE_SUFFIX}"
-          echo "MANIFEST_CACHE_KEY=$MANIFEST_CACHE_KEY" >> "$GITHUB_ENV"
+          printf 'MANIFEST_CACHE_KEY=%s-%s-%s%s\n' \
+            "$MANIFEST_CACHE_KEY_PREFIX" "$RUNNER_OS" "$CACHE_ID" "$CACHE_SUFFIX" \
+            >> "$GITHUB_ENV"
 
       - name: Debug manifest cache variables
         run: |
           echo "MANIFEST_FILE=$MANIFEST_FILE"
           echo "MANIFEST_CACHE_KEY=$MANIFEST_CACHE_KEY"
 
+      # Artifact name matches the build-hugo.yml upload: per-run scope,
+      # disambiguated only by prod/debug suffix.
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
-          # Name of the artifact to download - must match the build artifact name
-          name: ${{ env.ARTIFACT_PATH }}-${{ env.BRANCH_NAME }}${{ env.ARTIFACT_SUFFIX && format('-{0}', env.ARTIFACT_SUFFIX) || '' }}
+          name: ${{ env.ARTIFACT_PATH }}-${{ env.ARTIFACT_SUFFIX }}
           # Destination path. Supports basic tilde expansion.
           path: ${{ env.ARTIFACT_PATH }}
 
+      # wrangler-action parses `command:` into argv and passes it to wrangler
+      # directly (not via a shell), so the interpolation of github.ref_name
+      # below is not a shell-injection vector. Branch names flow through
+      # untouched — Cloudflare Pages slugifies internally to generate the
+      # alias subdomain.
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy ${{ env.ARTIFACT_PATH }} --project-name=${{ inputs.CLOUDFLARE_PROJECT_NAME }} --branch=${{ env.BRANCH_NAME }}
+          command: pages deploy ${{ env.ARTIFACT_PATH }} --project-name=${{ inputs.CLOUDFLARE_PROJECT_NAME }} --branch=${{ github.ref_name }}
 
       # Restore previously cached hash manifest to detect changes in content
       - name: Restore previous manifest
