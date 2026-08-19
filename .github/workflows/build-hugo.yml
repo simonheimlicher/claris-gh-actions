@@ -103,11 +103,19 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      # Install Node.js dependencies if package-lock.json or similar exists
+      # Install Node.js dependencies from whichever lockfile the project uses.
+      # Hugo's built-in esbuild resolves bare imports such as `posthog-js` from
+      # node_modules, so a skipped install surfaces later as an opaque
+      # "Could not resolve" during js.Build rather than as an install failure.
       - name: Install Node.js dependencies
         run: |
-          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ] || [ -f yarn.lock ]; then
+          if [ -f pnpm-lock.yaml ]; then
+            corepack enable pnpm
+            pnpm install --frozen-lockfile
+          elif [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ] || [ -f yarn.lock ]; then
             npm ci
+          else
+            echo "No lockfile found; skipping Node.js dependency install."
           fi
 
       # Restore Hugo's internal cache for faster builds (e.g. image processing)
