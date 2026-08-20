@@ -175,6 +175,55 @@ jobs:
         run: |
           du -sch "${{ env.HUGO_CACHE_DIR }}"/*/* || true
 
+      # Stamp the build so what is actually deployed can be read rather than
+      # inferred: `curl <host>/build-info.json` names the exact commit, ref and
+      # workflow run that produced the site being served. This needs no API
+      # token and works for any consumer, which the run log and the Cloudflare
+      # API both fail to do.
+      #
+      # Values derived from github.* are attacker-influenceable, so they are
+      # passed via `env:` and consumed as quoted shell variables, per the
+      # convention documented in update-websites.yml. `jq -n` builds the JSON so
+      # that any character legal in a ref name is escaped correctly.
+      - name: Write build info
+        env:
+          BUILD_REPOSITORY: ${{ github.repository }}
+          BUILD_REF: ${{ github.ref }}
+          BUILD_REF_NAME: ${{ github.ref_name }}
+          BUILD_SHA: ${{ github.sha }}
+          BUILD_RUN_ID: ${{ github.run_id }}
+          BUILD_RUN_ATTEMPT: ${{ github.run_attempt }}
+          BUILD_RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          jq -n \
+            --arg repository   "$BUILD_REPOSITORY" \
+            --arg ref          "$BUILD_REF" \
+            --arg branch       "$BUILD_REF_NAME" \
+            --arg sha          "$BUILD_SHA" \
+            --arg run_id       "$BUILD_RUN_ID" \
+            --arg run_attempt  "$BUILD_RUN_ATTEMPT" \
+            --arg run_number   "$BUILD_RUN_NUMBER" \
+            --arg environment  "$HUGO_ENVIRONMENT" \
+            --arg hugo_version "$HUGO_VERSION" \
+            --arg base_url     "$HUGO_BASE_URL" \
+            --arg built_at     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{
+               repository:   $repository,
+               ref:          $ref,
+               branch:       $branch,
+               sha:          $sha,
+               short_sha:    ($sha[0:7]),
+               run_id:       $run_id,
+               run_attempt:  $run_attempt,
+               run_number:   $run_number,
+               environment:  $environment,
+               hugo_version: $hugo_version,
+               base_url:     $base_url,
+               built_at:     $built_at
+             }' \
+            > "${ARTIFACT_PATH}/build-info.json"
+          cat "${ARTIFACT_PATH}/build-info.json"
+
       # Upload the built site as an artifact for later deployment.
       # Artifacts are scoped to the workflow run, so the suffix alone
       # (prod/debug) is enough to disambiguate within this run — no branch
